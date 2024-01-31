@@ -125,6 +125,7 @@ public:
 	void setNodeSwallow(const PHLWORKSPACE& workspace, SetSwallowOption);
 	void killFocusedNode(const PHLWORKSPACE& workspace);
 	void expand(const PHLWORKSPACE& workspace, ExpandOption, ExpandFullscreenOption);
+	void resizeNode(const Vector2D& delta, eRectCorner corner, Hy3Node* node);
 
 	bool shouldRenderSelected(CWindow*);
 
