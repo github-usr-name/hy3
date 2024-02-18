@@ -4,6 +4,7 @@
 
 #include <hyprland/src/layout/IHyprLayout.hpp>
 #include <map>
+#include "BitFlag.hpp"
 
 #include <hyprland/src/desktop/DesktopTypes.hpp>
 class Hy3Layout;
@@ -28,6 +29,20 @@ enum class SearchDirection {
 };
 
 enum class Axis { None, Horizontal, Vertical };
+
+enum class Layer {
+	None     = 0,
+	Tiled    = 1 << 0,
+	Floating = 1 << 1
+};
+
+inline Layer operator| (Layer a, Layer b) {
+	return static_cast<Layer>((int)a | (int)b);
+}
+
+inline Layer operator& (Layer a, Layer b) {
+	return static_cast<Layer>((int)a & (int)b);
+}
 
 #include "Hy3Node.hpp"
 #include "TabGroup.hpp"
