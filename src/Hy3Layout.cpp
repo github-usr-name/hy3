@@ -1148,7 +1148,13 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& workspace, ShiftDirection directi
 	CWindow    *source_window    = g_pCompositor->m_pLastWindow;
 	CWorkspace *source_workspace = g_pCompositor->getWorkspaceByID(workspace);
 
-	if(source_window == nullptr || (source_workspace && source_workspace->m_bHasFullscreenWindow)) {
+	if (source_workspace) {
+		source_window = source_workspace->m_pLastFocusedWindow;
+	} else {
+		source_window = g_pCompositor->m_pLastWindow;
+	}
+
+	if (source_window == nullptr || (source_workspace && source_workspace->m_bHasFullscreenWindow)) {
 		shiftFocusToMonitor(direction);
 		return;
 	}
