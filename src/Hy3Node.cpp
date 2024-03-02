@@ -861,9 +861,7 @@ int directionToIteratorIncrement(ShiftDirection direction) {
 	}
 }
 
-Vector2D Hy3Node::middle() {
-	return this->position + this->size / 2.f;
-}
+Vector2D Hy3Node::middle() { return this->position + this->size / 2.f; }
 
 void Hy3Node::resize(ShiftDirection direction, double delta, bool no_animation) {
 	auto& parent_node = this->parent;
@@ -898,7 +896,12 @@ void Hy3Node::resize(ShiftDirection direction, double delta, bool no_animation) 
 
 					parent_node->recalcSizePosRecursive(no_animation);
 				} else {
-					hy3_log(WARN, "Requested size ratio {} or {} out of bounds, ignoring", requested_size_ratio, requested_neighbor_size_ratio);
+					hy3_log(
+					    WARN,
+					    "Requested size ratio {} or {} out of bounds, ignoring",
+					    requested_size_ratio,
+					    requested_neighbor_size_ratio
+					);
 				}
 			}
 		}
@@ -924,17 +927,17 @@ void Hy3Node::swapData(Hy3Node& a, Hy3Node& b) {
 }
 
 bool Hy3Node::hasChild(Hy3Node* node) {
-	if(this->data.type == Hy3NodeType::Window) return false;
+	if (this->data.type == Hy3NodeType::Window) return false;
 
 	auto n = node;
-	while(n != nullptr && n->parent != this) n = n->parent;
+	while (n != nullptr && n->parent != this) n = n->parent;
 
 	return n != nullptr;
 }
 
 Hy3Node* Hy3Node::getRoot() {
 	Hy3Node* maybeRoot = this;
-	while(maybeRoot->parent) maybeRoot = maybeRoot->parent;
+	while (maybeRoot->parent) maybeRoot = maybeRoot->parent;
 
 	return maybeRoot;
 }

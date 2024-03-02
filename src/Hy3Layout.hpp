@@ -1,9 +1,10 @@
 #pragma once
 #include <list>
+#include <map>
 #include <set>
 
 #include <hyprland/src/layout/IHyprLayout.hpp>
-#include <map>
+
 #include "BitFlag.hpp"
 
 #include <hyprland/src/desktop/DesktopTypes.hpp>
@@ -22,27 +23,15 @@ enum class ShiftDirection {
 	Right,
 };
 
-enum class SearchDirection {
-	None,
-	Forwards,
-	Backwards
-};
+enum class SearchDirection { None, Forwards, Backwards };
 
 enum class Axis { None, Horizontal, Vertical };
 
-enum class Layer {
-	None     = 0,
-	Tiled    = 1 << 0,
-	Floating = 1 << 1
-};
+enum class Layer { None = 0, Tiled = 1 << 0, Floating = 1 << 1 };
 
-inline Layer operator| (Layer a, Layer b) {
-	return static_cast<Layer>((int)a | (int)b);
-}
+inline Layer operator|(Layer a, Layer b) { return static_cast<Layer>((int) a | (int) b); }
 
-inline Layer operator& (Layer a, Layer b) {
-	return static_cast<Layer>((int)a & (int)b);
-}
+inline Layer operator&(Layer a, Layer b) { return static_cast<Layer>((int) a & (int) b); }
 
 #include "Hy3Node.hpp"
 #include "TabGroup.hpp"
@@ -91,26 +80,23 @@ enum class ExpandFullscreenOption {
 };
 
 struct FocusOverride {
-	Hy3Node *left = nullptr;
-	Hy3Node *up = nullptr;
-	Hy3Node *right = nullptr;
-	Hy3Node *down = nullptr;
+	Hy3Node* left = nullptr;
+	Hy3Node* up = nullptr;
+	Hy3Node* right = nullptr;
+	Hy3Node* down = nullptr;
 
-	Hy3Node **forDirection(ShiftDirection direction) {
-		switch(direction) {
-			case ShiftDirection::Left: return &left;
-			case ShiftDirection::Up: return &up;
-			case ShiftDirection::Right: return &right;
-			case ShiftDirection::Down: return &down;
-			default: UNREACHABLE();
+	Hy3Node** forDirection(ShiftDirection direction) {
+		switch (direction) {
+		case ShiftDirection::Left: return &left;
+		case ShiftDirection::Up: return &up;
+		case ShiftDirection::Right: return &right;
+		case ShiftDirection::Down: return &down;
+		default: UNREACHABLE();
 		}
 	}
 
-	bool isEmpty() {
-		return !(left || right || up || down);
-	}
+	bool isEmpty() { return !(left || right || up || down); }
 };
-
 
 class Hy3Layout: public IHyprLayout {
 public:
@@ -122,7 +108,8 @@ public:
 	virtual bool isWindowTiled(CWindow*);
 	virtual void recalculateMonitor(const int& monitor_id);
 	virtual void recalculateWindow(CWindow*);
-	virtual void resizeActiveWindow(const Vector2D& delta, eRectCorner corner, CWindow* pWindow = nullptr);
+	virtual void
+	resizeActiveWindow(const Vector2D& delta, eRectCorner corner, CWindow* pWindow = nullptr);
 	virtual void fullscreenRequestForWindow(CWindow*, eFullscreenMode, bool enable_fullscreen);
 	virtual std::any layoutMessage(SLayoutMessageHeader header, std::string content);
 	virtual SWindowRenderLayoutHints requestRenderHints(CWindow*);

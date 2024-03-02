@@ -147,14 +147,18 @@ struct Distance {
 		secondary_axis = getAxis(direction) == Axis::Horizontal ? dist.y : dist.x;
 	}
 
-	bool operator< (Distance other) {
+	bool operator<(Distance other) {
 		return signbit(primary_axis) == signbit(other.primary_axis)
-			&& (abs(primary_axis) < abs(other.primary_axis) || (primary_axis == other.primary_axis && abs(secondary_axis) < abs(other.secondary_axis)));
+		    && (abs(primary_axis) < abs(other.primary_axis)
+		        || (primary_axis == other.primary_axis
+		            && abs(secondary_axis) < abs(other.secondary_axis)));
 	}
 
-	bool operator> (Distance other) {
+	bool operator>(Distance other) {
 		return signbit(primary_axis) == signbit(other.primary_axis)
-			&& (abs(primary_axis) > abs(other.primary_axis) || (primary_axis == other.primary_axis && abs(secondary_axis) > abs(other.secondary_axis)));
+		    && (abs(primary_axis) > abs(other.primary_axis)
+		        || (primary_axis == other.primary_axis
+		            && abs(secondary_axis) > abs(other.secondary_axis)));
 	}
 
 	bool isSameDirection(Distance other) {
@@ -162,6 +166,7 @@ struct Distance {
 	}
 
 	bool isInDirection(ShiftDirection direction) {
-		return std::signbit(primary_axis) == (getSearchDirection(direction) == SearchDirection::Forwards);
+		return std::signbit(primary_axis)
+		    == (getSearchDirection(direction) == SearchDirection::Forwards);
 	}
 };

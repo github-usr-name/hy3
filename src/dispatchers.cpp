@@ -126,14 +126,15 @@ void dispatch_movefocus(std::string value) {
 		bool visible;
 		BitFlag<Layer> layers;
 
-		for(auto arg: args) {
-			if(arg == "visible") visible = true;
+		for (auto arg: args) {
+			if (arg == "visible") visible = true;
 			else if ((layerArg = parseLayerArg(arg))) layers |= layerArg.value();
 		}
 
-		if(!layerArg) {
-			const static auto default_movefocus_layer = ConfigValue<Hyprlang::STRING>("plugin:hy3:default_movefocus_layer");
-			if((layerArg = parseLayerArg(*default_movefocus_layer))) layers |= layerArg.value();
+		if (!layerArg) {
+			const static auto default_movefocus_layer =
+			    ConfigValue<Hyprlang::STRING>("plugin:hy3:default_movefocus_layer");
+			if ((layerArg = parseLayerArg(*default_movefocus_layer))) layers |= layerArg.value();
 		}
 
 		g_Hy3Layout->shiftFocus(workspace, shift.value(), visible, layers);
@@ -272,7 +273,7 @@ void dispatch_resizenode(std::string value) {
 	auto* node = g_Hy3Layout->getWorkspaceFocusedNode(workspace, false, true);
 	const auto delta = g_pCompositor->parseWindowVectorArgsRelative(value, Vector2D(0, 0));
 
-	hy3_log(LOG, "resizeNode: node: {:x}, delta: {:X}", (uintptr_t)node, delta);
+	hy3_log(LOG, "resizeNode: node: {:x}, delta: {:X}", (uintptr_t) node, delta);
 	g_Hy3Layout->resizeNode(delta, CORNER_NONE, node);
 }
 

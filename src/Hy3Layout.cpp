@@ -1,17 +1,18 @@
-#include <regex>
-#include <set>
 #include <functional>
 #include <numeric>
+#include <regex>
+#include <set>
+
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/desktop/DesktopTypes.hpp>
 #include <hyprland/src/plugins/PluginAPI.hpp>
 #include <ranges>
 
+#include "BitFlag.hpp"
 #include "Hy3Layout.hpp"
 #include "SelectionHook.hpp"
-#include "globals.hpp"
 #include "conversions.hpp"
-#include "BitFlag.hpp"
+#include "globals.hpp"
 
 std::unique_ptr<HOOK_CALLBACK_FN> renderHookPtr =
     std::make_unique<HOOK_CALLBACK_FN>(Hy3Layout::renderHook);
@@ -345,9 +346,7 @@ void Hy3Layout::onWindowRemovedTiling(CWindow* window) {
 	}
 }
 
-void Hy3Layout::onWindowRemovedFloating(CWindow *window) {
-	this->m_focusIntercepts.erase(window);
-}
+void Hy3Layout::onWindowRemovedFloating(CWindow* window) { this->m_focusIntercepts.erase(window); }
 
 void Hy3Layout::onWindowFocusChange(CWindow* window) {
 	auto* node = this->getNodeFromWindow(window);
@@ -414,56 +413,60 @@ ShiftDirection reverse(ShiftDirection direction) {
 	}
 }
 
-void executeResizeOperation(const Vector2D& delta, eRectCorner corner, Hy3Node *node, CMonitor* monitor) {
+void executeResizeOperation(
+    const Vector2D& delta,
+    eRectCorner corner,
+    Hy3Node* node,
+    CMonitor* monitor
+) {
 	if (node == nullptr) return;
 	if (monitor == nullptr) return;
 
-		const bool display_left =
-		    STICKS(node->position.x, monitor->vecPosition.x + monitor->vecReservedTopLeft.x);
-		const bool display_right = STICKS(
-		    node->position.x + node->size.x,
-		    monitor->vecPosition.x + monitor->vecSize.x - monitor->vecReservedBottomRight.x
-		);
-		const bool display_top =
-		    STICKS(node->position.y, monitor->vecPosition.y + monitor->vecReservedTopLeft.y);
-		const bool display_bottom = STICKS(
-		    node->position.y + node->size.y,
-		    monitor->vecPosition.y + monitor->vecSize.y - monitor->vecReservedBottomRight.y
-		);
+	const bool display_left =
+	    STICKS(node->position.x, monitor->vecPosition.x + monitor->vecReservedTopLeft.x);
+	const bool display_right = STICKS(
+	    node->position.x + node->size.x,
+	    monitor->vecPosition.x + monitor->vecSize.x - monitor->vecReservedBottomRight.x
+	);
+	const bool display_top =
+	    STICKS(node->position.y, monitor->vecPosition.y + monitor->vecReservedTopLeft.y);
+	const bool display_bottom = STICKS(
+	    node->position.y + node->size.y,
+	    monitor->vecPosition.y + monitor->vecSize.y - monitor->vecReservedBottomRight.y
+	);
 
-		Vector2D resize_delta = delta;
-		bool node_is_root = (node->data.type == Hy3NodeType::Group && node->parent == nullptr)
-		                 || (node->data.type == Hy3NodeType::Window
-		                     && (node->parent == nullptr || node->parent->parent == nullptr));
+	Vector2D resize_delta = delta;
+	bool node_is_root = (node->data.type == Hy3NodeType::Group && node->parent == nullptr)
+	                 || (node->data.type == Hy3NodeType::Window
+	                     && (node->parent == nullptr || node->parent->parent == nullptr));
 
-		if (node_is_root) {
-			if (display_left && display_right) resize_delta.x = 0;
-			if (display_top && display_bottom) resize_delta.y = 0;
+	if (node_is_root) {
+		if (display_left && display_right) resize_delta.x = 0;
+		if (display_top && display_bottom) resize_delta.y = 0;
+	}
+
+	// Don't execute the logic unless there's something to do
+	if (resize_delta.x != 0 || resize_delta.y != 0) {
+		ShiftDirection target_edge_x;
+		ShiftDirection target_edge_y;
+
+		// Determine the direction in which we're going to look for the neighbor node
+		// that will be resized
+		if (corner == CORNER_NONE) { // It's probably a keyboard event.
+			target_edge_x = display_right ? ShiftDirection::Left : ShiftDirection::Right;
+			target_edge_y = display_bottom ? ShiftDirection::Up : ShiftDirection::Down;
+
+			// If the anchor is not at the top/left then reverse the delta
+			if (target_edge_x == ShiftDirection::Left) resize_delta.x = -resize_delta.x;
+			if (target_edge_y == ShiftDirection::Up) resize_delta.y = -resize_delta.y;
+		} else { // It's probably a mouse event
+			// Resize against the edges corresponding to the selected corner
+			target_edge_x = corner == CORNER_TOPLEFT || corner == CORNER_BOTTOMLEFT
+			                  ? ShiftDirection::Left
+			                  : ShiftDirection::Right;
+			target_edge_y = corner == CORNER_TOPLEFT || corner == CORNER_TOPRIGHT ? ShiftDirection::Up
+			                                                                      : ShiftDirection::Down;
 		}
-
-		// Don't execute the logic unless there's something to do
-		if (resize_delta.x != 0 || resize_delta.y != 0) {
-			ShiftDirection target_edge_x;
-			ShiftDirection target_edge_y;
-
-			// Determine the direction in which we're going to look for the neighbor node
-			// that will be resized
-			if (corner == CORNER_NONE) { // It's probably a keyboard event.
-				target_edge_x = display_right ? ShiftDirection::Left : ShiftDirection::Right;
-				target_edge_y = display_bottom ? ShiftDirection::Up : ShiftDirection::Down;
-
-				// If the anchor is not at the top/left then reverse the delta
-				if (target_edge_x == ShiftDirection::Left) resize_delta.x = -resize_delta.x;
-				if (target_edge_y == ShiftDirection::Up) resize_delta.y = -resize_delta.y;
-			} else { // It's probably a mouse event
-				// Resize against the edges corresponding to the selected corner
-				target_edge_x = corner == CORNER_TOPLEFT || corner == CORNER_BOTTOMLEFT
-				                  ? ShiftDirection::Left
-				                  : ShiftDirection::Right;
-				target_edge_y = corner == CORNER_TOPLEFT || corner == CORNER_TOPRIGHT
-				                  ? ShiftDirection::Up
-				                  : ShiftDirection::Down;
-			}
 
 		// Find the neighboring node in each axis, which will be either above or at the
 		// same level as the initiating node in the layout hierarchy.  These are the nodes
@@ -472,13 +475,13 @@ void executeResizeOperation(const Vector2D& delta, eRectCorner corner, Hy3Node *
 		auto horizontal_neighbor = node->findNeighbor(target_edge_x);
 		auto vertical_neighbor = node->findNeighbor(target_edge_y);
 
-			static const auto animate = ConfigValue<Hyprlang::INT>("misc:animate_manual_resizes");
+		static const auto animate = ConfigValue<Hyprlang::INT>("misc:animate_manual_resizes");
 
-			// Note that the resize direction is reversed, because from the neighbor's perspective
-			// the edge to be moved is the opposite way round.  However, the delta is still the same.
-			if (horizontal_neighbor) {
-				horizontal_neighbor->resize(reverse(target_edge_x), resize_delta.x, *animate == 0);
-			}
+		// Note that the resize direction is reversed, because from the neighbor's perspective
+		// the edge to be moved is the opposite way round.  However, the delta is still the same.
+		if (horizontal_neighbor) {
+			horizontal_neighbor->resize(reverse(target_edge_x), resize_delta.x, *animate == 0);
+		}
 
 		if (vertical_neighbor) {
 			vertical_neighbor->resize(reverse(target_edge_y), resize_delta.y, *animate == 0);
@@ -489,17 +492,19 @@ void executeResizeOperation(const Vector2D& delta, eRectCorner corner, Hy3Node *
 void Hy3Layout::resizeNode(const Vector2D& delta, eRectCorner corner, Hy3Node* node) {
 	// Is the intended target really a node or a floating window?
 	auto window = g_pCompositor->m_pLastWindow;
-	if(window && window->m_bIsFloating) {
+	if (window && window->m_bIsFloating) {
 		this->resizeActiveWindow(delta, corner, window);
 	} else if (node) {
-		auto monitor = g_pCompositor->getMonitorFromID(g_pCompositor->getWorkspaceByID(node->workspace_id)->m_iMonitorID);
+		auto monitor = g_pCompositor->getMonitorFromID(
+		    g_pCompositor->getWorkspaceByID(node->workspace_id)->m_iMonitorID
+		);
 		executeResizeOperation(delta, corner, node, monitor);
 	}
 }
 
 void Hy3Layout::resizeActiveWindow(const Vector2D& delta, eRectCorner corner, CWindow* pWindow) {
 	auto window = pWindow ? pWindow : g_pCompositor->m_pLastWindow;
-	if(window == nullptr || ! g_pCompositor->windowValidMapped(window)) return;
+	if (window == nullptr || !g_pCompositor->windowValidMapped(window)) return;
 
 	if (window->m_bIsFloating) {
 		// Use the same logic as the `main` layout for floating windows
@@ -509,8 +514,13 @@ void Hy3Layout::resizeActiveWindow(const Vector2D& delta, eRectCorner corner, CW
 		);
 		window->m_vRealSize = required_size;
 		g_pXWaylandManager->setWindowSize(window, required_size);
-	} else if (auto* node = this->getNodeFromWindow(window);node != nullptr) {
-		executeResizeOperation(delta, corner, &node->getExpandActor(), g_pCompositor->getMonitorFromID(window->m_iMonitorID));
+	} else if (auto* node = this->getNodeFromWindow(window); node != nullptr) {
+		executeResizeOperation(
+		    delta,
+		    corner,
+		    &node->getExpandActor(),
+		    g_pCompositor->getMonitorFromID(window->m_iMonitorID)
+		);
 	}
 }
 
@@ -900,50 +910,51 @@ void Hy3Layout::shiftNode(Hy3Node& node, ShiftDirection direction, bool once, bo
 void shiftFloatingWindow(CWindow* window, ShiftDirection direction) {
 	static const auto kbd_shift_delta = ConfigValue<Hyprlang::INT>("plugin:hy3:kbd_shift_delta");
 
-	if(!window) return;
+	if (!window) return;
 
 	Vector2D bounds {0, 0};
 	// BUG:  Assumes horizontal monitor layout
 	// BUG:  Ignores monitor reserved space
-	for(auto m: g_pCompositor->m_vMonitors) {
+	for (auto m: g_pCompositor->m_vMonitors) {
 		bounds.x = std::max(bounds.x, m->vecPosition.x + m->vecSize.x);
-		if(m->ID == window->m_iMonitorID) {
+		if (m->ID == window->m_iMonitorID) {
 			bounds.y = m->vecPosition.y + m->vecSize.y;
 		}
 	}
 
-	const int delta = getSearchDirection(direction) == SearchDirection::Forwards
-		? *kbd_shift_delta: -*kbd_shift_delta;
+	const int delta = getSearchDirection(direction) == SearchDirection::Forwards ? *kbd_shift_delta
+	                                                                             : -*kbd_shift_delta;
 
-	Vector2D movement_delta = (getAxis(direction) == Axis::Horizontal)
-		? Vector2D{ delta, 0 } : Vector2D{ 0, delta };
+	Vector2D movement_delta =
+	    (getAxis(direction) == Axis::Horizontal) ? Vector2D {delta, 0} : Vector2D {0, delta};
 
 	auto window_pos = window->m_vRealPosition.vec();
 	auto window_size = window->m_vRealSize.vec();
 
 	// Keep at least `delta` pixels visible
-	if (window_pos.x + window_size.x + delta < 0 || window_pos.x + delta > bounds.x) movement_delta.x = 0;
-	if (window_pos.y + window_size.y + delta < 0 || window_pos.y + delta > bounds.y) movement_delta.y = 0;
-	if(movement_delta.x != 0 || movement_delta.y != 0) {
+	if (window_pos.x + window_size.x + delta < 0 || window_pos.x + delta > bounds.x)
+		movement_delta.x = 0;
+	if (window_pos.y + window_size.y + delta < 0 || window_pos.y + delta > bounds.y)
+		movement_delta.y = 0;
+	if (movement_delta.x != 0 || movement_delta.y != 0) {
 		auto new_pos = window_pos + movement_delta;
 		// Do we need to change the workspace?
 		const auto new_monitor = g_pCompositor->getMonitorFromVector(new_pos);
-		if(new_monitor && new_monitor->ID != window->m_iMonitorID) {
+		if (new_monitor && new_monitor->ID != window->m_iMonitorID) {
 			// Ignore the movement request if the new workspace is special
-			if(! new_monitor->specialWorkspaceID) {
+			if (!new_monitor->specialWorkspaceID) {
 				const auto old_workspace = g_pCompositor->getWorkspaceByID(window->m_iWorkspaceID);
 				const auto new_workspace = g_pCompositor->getWorkspaceByID(new_monitor->activeWorkspace);
 				const auto previous_monitor = g_pCompositor->getMonitorFromID(window->m_iMonitorID);
 				const auto original_new_pos = new_pos;
 
-				if(new_workspace && previous_monitor) {
-					switch (direction)
-					{
-						case ShiftDirection::Left: new_pos.x += new_monitor->vecSize.x; break;
-						case ShiftDirection::Right: new_pos.x -= previous_monitor->vecSize.x; break;
-						case ShiftDirection::Up: new_pos.y += new_monitor->vecSize.y; break;
-						case ShiftDirection::Down: new_pos.y -= previous_monitor->vecSize.y; break;
-						default: UNREACHABLE();
+				if (new_workspace && previous_monitor) {
+					switch (direction) {
+					case ShiftDirection::Left: new_pos.x += new_monitor->vecSize.x; break;
+					case ShiftDirection::Right: new_pos.x -= previous_monitor->vecSize.x; break;
+					case ShiftDirection::Up: new_pos.y += new_monitor->vecSize.y; break;
+					case ShiftDirection::Down: new_pos.y -= previous_monitor->vecSize.y; break;
+					default: UNREACHABLE();
 					}
 				}
 
@@ -951,7 +962,8 @@ void shiftFloatingWindow(CWindow* window, ShiftDirection direction) {
 				g_pCompositor->moveWindowToWorkspaceSafe(window, new_workspace);
 				g_pCompositor->setActiveMonitor(new_monitor);
 
-				const static auto allow_workspace_cycles = ConfigValue<Hyprlang::INT>("binds:allow_workspace_cycles");
+				const static auto allow_workspace_cycles =
+				    ConfigValue<Hyprlang::INT>("binds:allow_workspace_cycles");
 				if (*allow_workspace_cycles) new_workspace->rememberPrevWorkspace(old_workspace);
 			}
 		} else {
@@ -972,16 +984,16 @@ void Hy3Layout::shiftWindow(int workspace_id, ShiftDirection direction, bool onc
 }
 
 void Hy3Layout::focusMonitor(CMonitor* monitor) {
-	if(monitor == nullptr) return;
+	if (monitor == nullptr) return;
 
 	g_pCompositor->setActiveMonitor(monitor);
 	const auto focusedNode = this->getWorkspaceFocusedNode(monitor->activeWorkspace);
-	if(focusedNode != nullptr) {
+	if (focusedNode != nullptr) {
 		focusedNode->focus();
 	} else {
 		auto* workspace = g_pCompositor->getWorkspaceByID(monitor->activeWorkspace);
 		CWindow* next_window = nullptr;
-		if(workspace != nullptr) {
+		if (workspace != nullptr) {
 			workspace->setActive(true);
 			if (workspace->m_bHasFullscreenWindow) {
 				next_window = g_pCompositor->getFullscreenWindowOnWorkspace(workspace->m_iID);
@@ -991,8 +1003,8 @@ void Hy3Layout::focusMonitor(CMonitor* monitor) {
 		} else {
 			for (auto& w: g_pCompositor->m_vWindows | std::views::reverse) {
 				if (w->m_bIsMapped && !w->isHidden() && w->m_bIsFloating && w->m_iX11Type != 2
-					&& w->m_iWorkspaceID == next_window->m_iWorkspaceID && !w->m_bX11ShouldntFocus
-					&& !w->m_sAdditionalConfigData.noFocus)
+				    && w->m_iWorkspaceID == next_window->m_iWorkspaceID && !w->m_bX11ShouldntFocus
+				    && !w->m_sAdditionalConfigData.noFocus)
 				{
 					next_window = w.get();
 					break;
@@ -1003,13 +1015,13 @@ void Hy3Layout::focusMonitor(CMonitor* monitor) {
 	}
 }
 
-CWindow *getFocusedWindow(const Hy3Node *node) {
+CWindow* getFocusedWindow(const Hy3Node* node) {
 	auto search = node;
-	while(search != nullptr && search->data.type == Hy3NodeType::Group) {
+	while (search != nullptr && search->data.type == Hy3NodeType::Group) {
 		search = search->data.as_group.focused_child;
 	}
 
-	if(search == nullptr || search->data.type != Hy3NodeType::Window) {
+	if (search == nullptr || search->data.type != Hy3NodeType::Window) {
 		return nullptr;
 	}
 
@@ -1029,32 +1041,31 @@ bool shiftMatchesLayout(Hy3GroupLayout layout, ShiftDirection direction) {
 	    || (layout != Hy3GroupLayout::SplitV && !shiftIsVertical(direction));
 }
 
-
-bool covers(const CBox &outer, const CBox &inner) {
-	return outer.x <= inner.x
-		&& outer.y <= inner.y
-		&& outer.x + outer.w >= inner.x + inner.w
-		&& outer.y + outer.h >= inner.y + inner.h;
+bool covers(const CBox& outer, const CBox& inner) {
+	return outer.x <= inner.x && outer.y <= inner.y && outer.x + outer.w >= inner.x + inner.w
+	    && outer.y + outer.h >= inner.y + inner.h;
 }
 
-bool isObscured (CWindow* window) {
-	if(!window) return false;
+bool isObscured(CWindow* window) {
+	if (!window) return false;
 
 	const auto inner_box = window->getWindowMainSurfaceBox();
 
 	bool is_obscured = false;
-	for(auto& w :g_pCompositor->m_vWindows | std::views::reverse) {
-		if(w.get() == window) {
-			// Don't go any further if this is a floating window, because m_vWindows is sorted bottom->top per Compositor.cpp
-			if(window->m_bIsFloating) break; else continue;
+	for (auto& w: g_pCompositor->m_vWindows | std::views::reverse) {
+		if (w.get() == window) {
+			// Don't go any further if this is a floating window, because m_vWindows is sorted bottom->top
+			// per Compositor.cpp
+			if (window->m_bIsFloating) break;
+			else continue;
 		}
 
-		if(!w->m_bIsFloating) continue;
+		if (!w->m_bIsFloating) continue;
 
 		const auto outer_box = w->getWindowMainSurfaceBox();
 		is_obscured = covers(outer_box, inner_box);
 
-		if(is_obscured) break;
+		if (is_obscured) break;
 	};
 
 	return is_obscured;
@@ -1067,45 +1078,54 @@ bool isObscured(Hy3Node* node) {
 bool isNotObscured(CWindow* window) { return !isObscured(window); }
 bool isNotObscured(Hy3Node* node) { return !isObscured(node); }
 
-CWindow* getWindowInDirection(CWindow* source, ShiftDirection direction, BitFlag<Layer> layers_same_monitor, BitFlag<Layer> layers_other_monitors) {
-	if(!source) return nullptr;
-	if(layers_other_monitors == Layer::None && layers_same_monitor == Layer::None) return nullptr;
+CWindow* getWindowInDirection(
+    CWindow* source,
+    ShiftDirection direction,
+    BitFlag<Layer> layers_same_monitor,
+    BitFlag<Layer> layers_other_monitors
+) {
+	if (!source) return nullptr;
+	if (layers_other_monitors == Layer::None && layers_same_monitor == Layer::None) return nullptr;
 
-	CWindow *target_window = nullptr;
+	CWindow* target_window = nullptr;
 	const auto source_middle = source->middle();
 	std::optional<Distance> target_distance;
 
-	const auto static focus_policy = ConfigValue<Hyprlang::INT>("plugin:hy3:focus_obscured_windows_policy");
-	bool permit_obscured_windows = *focus_policy == 0 || (*focus_policy == 2 && layers_same_monitor.HasNot(Layer::Floating | Layer::Tiled));
+	const auto static focus_policy =
+	    ConfigValue<Hyprlang::INT>("plugin:hy3:focus_obscured_windows_policy");
+	bool permit_obscured_windows =
+	    *focus_policy == 0
+	    || (*focus_policy == 2 && layers_same_monitor.HasNot(Layer::Floating | Layer::Tiled));
 
 	const auto source_monitor = g_pCompositor->getMonitorFromID(source->m_iMonitorID);
-	const auto next_monitor = layers_other_monitors.HasAny(Layer::Floating | Layer::Tiled)
-							? g_pCompositor->getMonitorInDirection(source_monitor, directionToChar(direction))
-							: nullptr;
+	const auto next_monitor =
+	    layers_other_monitors.HasAny(Layer::Floating | Layer::Tiled)
+	        ? g_pCompositor->getMonitorInDirection(source_monitor, directionToChar(direction))
+	        : nullptr;
 
-	const auto next_workspace = next_monitor
-							  ? next_monitor->specialWorkspaceID ? next_monitor->specialWorkspaceID
-							 									 : next_monitor->activeWorkspace
-							  : WORKSPACE_INVALID;
+	const auto next_workspace = next_monitor ? next_monitor->specialWorkspaceID
+	                                             ? next_monitor->specialWorkspaceID
+	                                             : next_monitor->activeWorkspace
+	                                         : WORKSPACE_INVALID;
 
 	auto isCandidate = [=, mon = source->m_iMonitorID](CWindow* w) {
 		const auto window_layer = w->m_bIsFloating ? Layer::Floating : Layer::Tiled;
 		const auto monitor_flags = w->m_iMonitorID == mon ? layers_same_monitor : layers_other_monitors;
 
-		return (monitor_flags.Has(window_layer))
-			&& w->m_bIsMapped
-			&& w->m_iX11Type != 2
-			&& !w->m_sAdditionalConfigData.noFocus
-			&& !w->isHidden()
-			&& !w->m_bX11ShouldntFocus
-			&& (w->m_bPinned || w->m_iWorkspaceID == source->m_iWorkspaceID || w->m_iWorkspaceID == next_workspace);
+		return (monitor_flags.Has(window_layer)) && w->m_bIsMapped && w->m_iX11Type != 2
+		    && !w->m_sAdditionalConfigData.noFocus && !w->isHidden() && !w->m_bX11ShouldntFocus
+		    && (w->m_bPinned || w->m_iWorkspaceID == source->m_iWorkspaceID
+		        || w->m_iWorkspaceID == next_workspace);
 	};
 
-	for(auto &pw: g_pCompositor->m_vWindows) {
+	for (auto& pw: g_pCompositor->m_vWindows) {
 		auto w = pw.get();
-		if(w != source && isCandidate(w)) {
-			auto dist = Distance { direction, source_middle, w->middle() };
-			if((target_distance.has_value() ? dist < target_distance.value() : dist.isInDirection(direction)) && (permit_obscured_windows || isNotObscured(w)) ) {
+		if (w != source && isCandidate(w)) {
+			auto dist = Distance {direction, source_middle, w->middle()};
+			if ((target_distance.has_value() ? dist < target_distance.value()
+			                                 : dist.isInDirection(direction))
+			    && (permit_obscured_windows || isNotObscured(w)))
+			{
 				target_window = w;
 				target_distance = dist;
 			}
@@ -1115,19 +1135,32 @@ CWindow* getWindowInDirection(CWindow* source, ShiftDirection direction, BitFlag
 	hy3_log(LOG, "getWindowInDirection: closest window to {} is {}", source, target_window);
 
 	// If the closest window is on a different monitor and the nearest edge has the same position
-	// as the last focused window on that monitor's workspace then choose the last focused window instead; this
-	// allows seamless back-and-forth by direction keys
-	if(target_window && target_window->m_iMonitorID != source->m_iMonitorID) {
+	// as the last focused window on that monitor's workspace then choose the last focused window
+	// instead; this allows seamless back-and-forth by direction keys
+	if (target_window && target_window->m_iMonitorID != source->m_iMonitorID) {
 		if (auto new_workspace = g_pCompositor->getWorkspaceByID(next_workspace)) {
 			if (auto last_focused = new_workspace->getLastFocusedWindow()) {
-				auto target_bounds = CBox(target_window->m_vRealPosition.vec(), target_window->m_vRealSize.vec());
-				auto last_focused_bounds = CBox(last_focused->m_vRealPosition.vec(), last_focused->m_vRealSize.vec());
+				auto target_bounds =
+				    CBox(target_window->m_vRealPosition.vec(), target_window->m_vRealSize.vec());
+				auto last_focused_bounds =
+				    CBox(last_focused->m_vRealPosition.vec(), last_focused->m_vRealSize.vec());
 
-				if((direction == ShiftDirection::Left && STICKS(target_bounds.x + target_bounds.w, last_focused_bounds.x + last_focused_bounds.w))
-					|| (direction == ShiftDirection::Right && STICKS(target_bounds.x, last_focused_bounds.x))
-					|| (direction == ShiftDirection::Up && STICKS(target_bounds.y + target_bounds.h, last_focused_bounds.y + last_focused_bounds.h))
-					|| (direction == ShiftDirection::Down && STICKS(target_bounds.y, last_focused_bounds.y))) {
-						target_window = last_focused;
+				if ((direction == ShiftDirection::Left
+				     && STICKS(
+				         target_bounds.x + target_bounds.w,
+				         last_focused_bounds.x + last_focused_bounds.w
+				     ))
+				    || (direction == ShiftDirection::Right && STICKS(target_bounds.x, last_focused_bounds.x)
+				    )
+				    || (direction == ShiftDirection::Up
+				        && STICKS(
+				            target_bounds.y + target_bounds.h,
+				            last_focused_bounds.y + last_focused_bounds.h
+				        ))
+				    || (direction == ShiftDirection::Down && STICKS(target_bounds.y, last_focused_bounds.y)
+				    ))
+				{
+					target_window = last_focused;
 				}
 			}
 		}
@@ -1138,7 +1171,7 @@ CWindow* getWindowInDirection(CWindow* source, ShiftDirection direction, BitFlag
 
 void Hy3Layout::shiftFocusToMonitor(ShiftDirection direction) {
 	auto target_monitor = g_pCompositor->getMonitorInDirection(directionToChar(direction));
-	if(target_monitor) this->focusMonitor(target_monitor);
+	if (target_monitor) this->focusMonitor(target_monitor);
 }
 
 void Hy3Layout::shiftFocus(const PHLWORKSPACE& workspace, ShiftDirection direction, bool visible) {
@@ -1159,56 +1192,66 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& workspace, ShiftDirection directi
 		return;
 	}
 
-	hy3_log(LOG,
-		"shiftFocus: Source: {} ({}), workspace: {}, direction: {}, visible: {}",
-		source_window,
-		source_window->m_bIsFloating ? "floating" : "tiled",
-		workspace,
-		(int)direction,
-		visible
+	hy3_log(
+	    LOG,
+	    "shiftFocus: Source: {} ({}), workspace: {}, direction: {}, visible: {}",
+	    source_window,
+	    source_window->m_bIsFloating ? "floating" : "tiled",
+	    workspace,
+	    (int) direction,
+	    visible
 	);
 
 	// If no eligible_layers specified then choose the same layer as the source window
-	if(eligible_layers == Layer::None) eligible_layers = source_window->m_bIsFloating ? Layer::Floating : Layer::Tiled;
+	if (eligible_layers == Layer::None)
+		eligible_layers = source_window->m_bIsFloating ? Layer::Floating : Layer::Tiled;
 
-	const auto static focus_policy = ConfigValue<Hyprlang::INT>("plugin:hy3:focus_obscured_windows_policy");
-	bool skip_obscured = *focus_policy == 1 || (*focus_policy == 2 && eligible_layers.Has(Layer::Floating | Layer::Tiled));
+	const auto static focus_policy =
+	    ConfigValue<Hyprlang::INT>("plugin:hy3:focus_obscured_windows_policy");
+	bool skip_obscured = *focus_policy == 1
+	                  || (*focus_policy == 2 && eligible_layers.Has(Layer::Floating | Layer::Tiled));
 
 	// Determine the starting point for looking for a tiled node - it's either the
 	// workspace's focused node or the floating window's focus entry point (which may be null)
 	if (eligible_layers.Has(Layer::Tiled)) {
 		source_node = source_window->m_bIsFloating ? getFocusOverride(source_window, direction)
-											       : getWorkspaceFocusedNode(workspace);
+		                                           : getWorkspaceFocusedNode(workspace);
 
-		if(source_node) {
+		if (source_node) {
 			candidate_node = this->shiftOrGetFocus(*source_node, direction, false, false, visible);
-			while(candidate_node && skip_obscured && isObscured(candidate_node)) {
+			while (candidate_node && skip_obscured && isObscured(candidate_node)) {
 				candidate_node = this->shiftOrGetFocus(*candidate_node, direction, false, false, visible);
 			}
 		}
 	}
 
 	BitFlag<Layer> this_monitor = eligible_layers & Layer::Floating;
-	if(source_window->m_bIsFloating && !candidate_node) this_monitor |= (eligible_layers & Layer::Tiled);
+	if (source_window->m_bIsFloating && !candidate_node)
+		this_monitor |= (eligible_layers & Layer::Tiled);
 
 	BitFlag<Layer> other_monitors;
-	if(!candidate_node) other_monitors |= eligible_layers;
+	if (!candidate_node) other_monitors |= eligible_layers;
 
 	// Find the closest window in the right direction.  Consider other monitors
 	// if we don't have a tiled candidate
 	closest_window = getWindowInDirection(source_window, direction, this_monitor, other_monitors);
 
-	// If there's a window in the right direction then choose between that window and the tiled candidate.
+	// If there's a window in the right direction then choose between that window and the tiled
+	// candidate.
 	bool focus_closest_window = false;
-	if(closest_window) {
-		if(candidate_node) {
-			// If the closest window is tiled then focus the tiled node which was obtained from `shiftOrGetFocus`,
-			// otherwise focus whichever is closer
-			if(closest_window->m_bIsFloating) {
-				Distance distanceToClosestWindow(direction, source_window->middle(), closest_window->middle());
+	if (closest_window) {
+		if (candidate_node) {
+			// If the closest window is tiled then focus the tiled node which was obtained from
+			// `shiftOrGetFocus`, otherwise focus whichever is closer
+			if (closest_window->m_bIsFloating) {
+				Distance distanceToClosestWindow(
+				    direction,
+				    source_window->middle(),
+				    closest_window->middle()
+				);
 				Distance distanceToTiledNode(direction, source_window->middle(), candidate_node->middle());
 
-				if(distanceToClosestWindow < distanceToTiledNode) {
+				if (distanceToClosestWindow < distanceToTiledNode) {
 					focus_closest_window = true;
 				}
 			}
@@ -1218,14 +1261,15 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& workspace, ShiftDirection directi
 	}
 
 	std::optional<uint64_t> new_monitor_id;
-	if(focus_closest_window) {
+	if (focus_closest_window) {
 		new_monitor_id = closest_window->m_iMonitorID;
 		setFocusOverride(closest_window, direction, source_node);
 		g_pCompositor->focusWindow(closest_window);
-	} else if(candidate_node) {
-		if(candidate_node->data.type == Hy3NodeType::Window) {
+	} else if (candidate_node) {
+		if (candidate_node->data.type == Hy3NodeType::Window) {
 			new_monitor_id = candidate_node->data.as_window->m_iMonitorID;
-		} else if(auto *workspace = g_pCompositor->getWorkspaceByID(candidate_node->getRoot()->workspace_id)) {
+		} else if (auto* workspace = g_pCompositor->getWorkspaceByID(candidate_node->getRoot()->workspace_id))
+		{
 			new_monitor_id = workspace->m_iMonitorID;
 		}
 		candidate_node->focusWindow();
@@ -1234,23 +1278,27 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& workspace, ShiftDirection directi
 		shiftFocusToMonitor(direction);
 	}
 
-	if(new_monitor_id && new_monitor_id.value() != source_window->m_iMonitorID) {
-		if(auto *monitor = g_pCompositor->getMonitorFromID(new_monitor_id.value())) {
+	if (new_monitor_id && new_monitor_id.value() != source_window->m_iMonitorID) {
+		if (auto* monitor = g_pCompositor->getMonitorFromID(new_monitor_id.value())) {
 			g_pCompositor->setActiveMonitor(monitor);
 		}
 	}
 }
 
 Hy3Node* Hy3Layout::getFocusOverride(CWindow* src, ShiftDirection direction) {
-	if(auto intercept = this->m_focusIntercepts.find(src); intercept != this->m_focusIntercepts.end()) {
+	if (auto intercept = this->m_focusIntercepts.find(src);
+	    intercept != this->m_focusIntercepts.end())
+	{
 		Hy3Node** accessor = intercept->second.forDirection(direction);
 
-		if(auto override = *accessor) {
+		if (auto override = *accessor) {
 			// If the root isn't valid or is on a different workspsace then update the intercept data
-			if(override->workspace_id != src->m_iWorkspaceID || !std::ranges::contains(this->nodes, *override)) {
+			if (override->workspace_id != src->m_iWorkspaceID
+			    || !std::ranges::contains(this->nodes, *override))
+			{
 				*accessor = nullptr;
 				// If there are no remaining overrides then discard the intercept
-				if(intercept->second.isEmpty()) {
+				if (intercept->second.isEmpty()) {
 					this->m_focusIntercepts.erase(intercept);
 				}
 			}
@@ -1263,12 +1311,14 @@ Hy3Node* Hy3Layout::getFocusOverride(CWindow* src, ShiftDirection direction) {
 }
 
 void Hy3Layout::setFocusOverride(CWindow* src, ShiftDirection direction, Hy3Node* dest) {
-	if(auto intercept = this->m_focusIntercepts.find(src);intercept != this->m_focusIntercepts.end()) {
+	if (auto intercept = this->m_focusIntercepts.find(src);
+	    intercept != this->m_focusIntercepts.end())
+	{
 		*intercept->second.forDirection(direction) = dest;
 	} else {
 		FocusOverride override;
 		*override.forDirection(direction) = dest;
-		this->m_focusIntercepts.insert({ src, override });
+		this->m_focusIntercepts.insert({src, override});
 	}
 }
 
@@ -2012,7 +2062,7 @@ Hy3Node* Hy3Layout::shiftOrGetFocus(
 		}
 		insert = parent_group.children.begin();
 	} else if (break_origin == parent_group.children.back() && shiftIsForward(direction)) {
-		if (!shift)  {
+		if (!shift) {
 			return nullptr;
 		}
 		insert = parent_group.children.end();
@@ -2036,7 +2086,7 @@ Hy3Node* Hy3Layout::shiftOrGetFocus(
 					if (shiftIsForward(direction)) insert = iter;
 					else insert = std::next(iter);
 				}
-			} else  {
+			} else {
 				return (*iter)->getFocusedNode();
 			}
 		} else {
