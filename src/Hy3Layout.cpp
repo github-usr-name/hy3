@@ -928,8 +928,8 @@ void shiftFloatingWindow(CWindow* window, ShiftDirection direction) {
 	Vector2D movement_delta =
 	    (getAxis(direction) == Axis::Horizontal) ? Vector2D {delta, 0} : Vector2D {0, delta};
 
-	auto window_pos = window->m_vRealPosition.vec();
-	auto window_size = window->m_vRealSize.vec();
+	auto window_pos = window->m_vRealPosition.value();
+	auto window_size = window->m_vRealSize.value();
 
 	// Keep at least `delta` pixels visible
 	if (window_pos.x + window_size.x + delta < 0 || window_pos.x + delta > bounds.x)
@@ -1141,9 +1141,9 @@ CWindow* getWindowInDirection(
 		if (auto new_workspace = g_pCompositor->getWorkspaceByID(next_workspace)) {
 			if (auto last_focused = new_workspace->getLastFocusedWindow()) {
 				auto target_bounds =
-				    CBox(target_window->m_vRealPosition.vec(), target_window->m_vRealSize.vec());
+				    CBox(target_window->m_vRealPosition.value(), target_window->m_vRealSize.value());
 				auto last_focused_bounds =
-				    CBox(last_focused->m_vRealPosition.vec(), last_focused->m_vRealSize.vec());
+				    CBox(last_focused->m_vRealPosition.value(), last_focused->m_vRealSize.value());
 
 				if ((direction == ShiftDirection::Left
 				     && STICKS(
