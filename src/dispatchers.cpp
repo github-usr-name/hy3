@@ -267,8 +267,8 @@ void dispatch_debug(std::string arg) {
 }
 
 void dispatch_resizenode(std::string value) {
-	int workspace = workspace_for_action();
-	if (workspace == -1) return;
+	auto workspace = workspace_for_action();
+	if (!valid(workspace)) return;
 
 	auto* node = g_Hy3Layout->getWorkspaceFocusedNode(workspace, false, true);
 	const auto delta = g_pCompositor->parseWindowVectorArgsRelative(value, Vector2D(0, 0));

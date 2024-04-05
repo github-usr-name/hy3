@@ -143,7 +143,7 @@ public:
 	void changeGroupEphemeralityOn(Hy3Node&, bool ephemeral);
 	void shiftNode(Hy3Node&, ShiftDirection, bool once, bool visible);
 	void shiftWindow(const PHLWORKSPACE& workspace, ShiftDirection, bool once, bool visible);
-	void shiftFocus(const PHLWORKSPACE& workspace, ShiftDirection, bool visible);
+	void shiftFocus(const PHLWORKSPACE& workspace, ShiftDirection, bool visible, BitFlag<Layer>);
 	void moveNodeToWorkspace(const PHLWORKSPACE& origin, std::string wsname, bool follow);
 	void changeFocus(const PHLWORKSPACE& workspace, FocusShift);
 	void focusTab(

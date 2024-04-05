@@ -494,10 +494,8 @@ void Hy3Layout::resizeNode(const Vector2D& delta, eRectCorner corner, Hy3Node* n
 	auto window = g_pCompositor->m_pLastWindow;
 	if (window && window->m_bIsFloating) {
 		this->resizeActiveWindow(delta, corner, window);
-	} else if (node) {
-		auto monitor = g_pCompositor->getMonitorFromID(
-		    g_pCompositor->getWorkspaceByID(node->workspace_id)->m_iMonitorID
-		);
+	} else if (node && node->workspace) {
+		auto monitor = g_pCompositor->getMonitorFromID(node->workspace->m_iMonitorID);
 		executeResizeOperation(delta, corner, node, monitor);
 	}
 }
@@ -640,10 +638,10 @@ void Hy3Layout::moveWindowTo(CWindow* window, const std::string& direction) {
 	if (node == nullptr) {
 		const auto neighbor = g_pCompositor->getWindowInDirection(window, direction[0]);
 
-		if (window->m_iWorkspaceID != neighbor->m_iWorkspaceID) {
+		if (window->workspaceID() != neighbor->workspaceID()) {
 			// if different monitors, send to monitor
 			onWindowRemovedTiling(window);
-			window->moveToWorkspace(neighbor->m_iWorkspaceID);
+			window->moveToWorkspace(neighbor->m_pWorkspace);
 			window->m_iMonitorID = neighbor->m_iMonitorID;
 			onWindowCreatedTiling(window);
 		}
@@ -942,9 +940,9 @@ void shiftFloatingWindow(CWindow* window, ShiftDirection direction) {
 		const auto new_monitor = g_pCompositor->getMonitorFromVector(new_pos);
 		if (new_monitor && new_monitor->ID != window->m_iMonitorID) {
 			// Ignore the movement request if the new workspace is special
-			if (!new_monitor->specialWorkspaceID) {
-				const auto old_workspace = g_pCompositor->getWorkspaceByID(window->m_iWorkspaceID);
-				const auto new_workspace = g_pCompositor->getWorkspaceByID(new_monitor->activeWorkspace);
+			if (!new_monitor->activeSpecialWorkspace) {
+				const auto old_workspace = window->m_pWorkspace;
+				const auto new_workspace = new_monitor->activeWorkspace;
 				const auto previous_monitor = g_pCompositor->getMonitorFromID(window->m_iMonitorID);
 				const auto original_new_pos = new_pos;
 
@@ -972,9 +970,9 @@ void shiftFloatingWindow(CWindow* window, ShiftDirection direction) {
 	}
 }
 
-void Hy3Layout::shiftWindow(int workspace_id, ShiftDirection direction, bool once, bool visible) {
+void Hy3Layout::shiftWindow(const PHLWORKSPACE &workspace, ShiftDirection direction, bool once, bool visible) {
 	auto focused_window = g_pCompositor->m_pLastWindow;
-	auto* node = getWorkspaceFocusedNode(workspace_id);
+	auto* node = getWorkspaceFocusedNode(workspace);
 
 	if (focused_window && focused_window->m_bIsFloating) {
 		shiftFloatingWindow(focused_window, direction);
@@ -991,7 +989,7 @@ void Hy3Layout::focusMonitor(CMonitor* monitor) {
 	if (focusedNode != nullptr) {
 		focusedNode->focus();
 	} else {
-		auto* workspace = g_pCompositor->getWorkspaceByID(monitor->activeWorkspace);
+		auto workspace = monitor->activeWorkspace;
 		CWindow* next_window = nullptr;
 		if (workspace != nullptr) {
 			workspace->setActive(true);
@@ -1003,7 +1001,7 @@ void Hy3Layout::focusMonitor(CMonitor* monitor) {
 		} else {
 			for (auto& w: g_pCompositor->m_vWindows | std::views::reverse) {
 				if (w->m_bIsMapped && !w->isHidden() && w->m_bIsFloating && w->m_iX11Type != 2
-				    && w->m_iWorkspaceID == next_window->m_iWorkspaceID && !w->m_bX11ShouldntFocus
+				    && w->m_pWorkspace == next_window->m_pWorkspace && !w->m_bX11ShouldntFocus
 				    && !w->m_sAdditionalConfigData.noFocus)
 				{
 					next_window = w.get();
@@ -1103,10 +1101,10 @@ CWindow* getWindowInDirection(
 	        ? g_pCompositor->getMonitorInDirection(source_monitor, directionToChar(direction))
 	        : nullptr;
 
-	const auto next_workspace = next_monitor ? next_monitor->specialWorkspaceID
-	                                             ? next_monitor->specialWorkspaceID
+	const auto next_workspace = next_monitor ? next_monitor->activeSpecialWorkspace
+	                                             ? next_monitor->activeSpecialWorkspace
 	                                             : next_monitor->activeWorkspace
-	                                         : WORKSPACE_INVALID;
+	                                         : nullptr;
 
 	auto isCandidate = [=, mon = source->m_iMonitorID](CWindow* w) {
 		const auto window_layer = w->m_bIsFloating ? Layer::Floating : Layer::Tiled;
@@ -1114,8 +1112,8 @@ CWindow* getWindowInDirection(
 
 		return (monitor_flags.Has(window_layer)) && w->m_bIsMapped && w->m_iX11Type != 2
 		    && !w->m_sAdditionalConfigData.noFocus && !w->isHidden() && !w->m_bX11ShouldntFocus
-		    && (w->m_bPinned || w->m_iWorkspaceID == source->m_iWorkspaceID
-		        || w->m_iWorkspaceID == next_workspace);
+		    && (w->m_bPinned || w->m_pWorkspace == source->m_pWorkspace
+		        || w->m_pWorkspace == next_workspace);
 	};
 
 	for (auto& pw: g_pCompositor->m_vWindows) {
@@ -1138,8 +1136,8 @@ CWindow* getWindowInDirection(
 	// as the last focused window on that monitor's workspace then choose the last focused window
 	// instead; this allows seamless back-and-forth by direction keys
 	if (target_window && target_window->m_iMonitorID != source->m_iMonitorID) {
-		if (auto new_workspace = g_pCompositor->getWorkspaceByID(next_workspace)) {
-			if (auto last_focused = new_workspace->getLastFocusedWindow()) {
+		if (next_workspace) {
+			if (auto last_focused = next_workspace->getLastFocusedWindow()) {
 				auto target_bounds =
 				    CBox(target_window->m_vRealPosition.value(), target_window->m_vRealSize.value());
 				auto last_focused_bounds =
@@ -1174,12 +1172,11 @@ void Hy3Layout::shiftFocusToMonitor(ShiftDirection direction) {
 	if (target_monitor) this->focusMonitor(target_monitor);
 }
 
-void Hy3Layout::shiftFocus(const PHLWORKSPACE& workspace, ShiftDirection direction, bool visible) {
+void Hy3Layout::shiftFocus(const PHLWORKSPACE& source_workspace, ShiftDirection direction, bool visible, BitFlag<Layer> eligible_layers) {
 	Hy3Node    *candidate_node   = nullptr;
 	CWindow    *closest_window   = nullptr;
 	Hy3Node    *source_node      = nullptr;
 	CWindow    *source_window    = g_pCompositor->m_pLastWindow;
-	CWorkspace *source_workspace = g_pCompositor->getWorkspaceByID(workspace);
 
 	if (source_workspace) {
 		source_window = source_workspace->m_pLastFocusedWindow;
@@ -1194,10 +1191,10 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& workspace, ShiftDirection directi
 
 	hy3_log(
 	    LOG,
-	    "shiftFocus: Source: {} ({}), workspace: {}, direction: {}, visible: {}",
+	    "shiftFocus: Source: {} ({}), workspace: {:x}, direction: {}, visible: {}",
 	    source_window,
 	    source_window->m_bIsFloating ? "floating" : "tiled",
-	    workspace,
+	    (uintptr_t) &source_workspace,
 	    (int) direction,
 	    visible
 	);
@@ -1215,7 +1212,7 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& workspace, ShiftDirection directi
 	// workspace's focused node or the floating window's focus entry point (which may be null)
 	if (eligible_layers.Has(Layer::Tiled)) {
 		source_node = source_window->m_bIsFloating ? getFocusOverride(source_window, direction)
-		                                           : getWorkspaceFocusedNode(workspace);
+		                                           : getWorkspaceFocusedNode(source_workspace);
 
 		if (source_node) {
 			candidate_node = this->shiftOrGetFocus(*source_node, direction, false, false, visible);
@@ -1268,8 +1265,7 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& workspace, ShiftDirection directi
 	} else if (candidate_node) {
 		if (candidate_node->data.type == Hy3NodeType::Window) {
 			new_monitor_id = candidate_node->data.as_window->m_iMonitorID;
-		} else if (auto* workspace = g_pCompositor->getWorkspaceByID(candidate_node->getRoot()->workspace_id))
-		{
+		} else if (auto workspace = candidate_node->getRoot()->workspace) {
 			new_monitor_id = workspace->m_iMonitorID;
 		}
 		candidate_node->focusWindow();
@@ -1293,7 +1289,7 @@ Hy3Node* Hy3Layout::getFocusOverride(CWindow* src, ShiftDirection direction) {
 
 		if (auto override = *accessor) {
 			// If the root isn't valid or is on a different workspsace then update the intercept data
-			if (override->workspace_id != src->m_iWorkspaceID
+			if (override->workspace != src->m_pWorkspace
 			    || !std::ranges::contains(this->nodes, *override))
 			{
 				*accessor = nullptr;
