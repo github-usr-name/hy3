@@ -8,13 +8,26 @@
 #include "globals.hpp"
 
 PHLWORKSPACE workspace_for_action(bool allow_fullscreen = false) {
-	if (g_pLayoutManager->getCurrentLayout() != g_Hy3Layout.get()) return nullptr;
+	Hy3TraceContext trace("workspace_for_action", "allow_fullscreen: {}", allow_fullscreen);
+
+	if (g_pLayoutManager->getCurrentLayout() != g_Hy3Layout.get()) {
+		trace.trace("layout mismatch");
+		return nullptr;
+	}
 
 	auto workspace = g_pCompositor->m_pLastMonitor->activeWorkspace;
 
-	if (!valid(workspace)) return nullptr;
-	if (!allow_fullscreen && workspace->m_bHasFullscreenWindow) return nullptr;
+	if (!valid(workspace)) {
+		trace.trace("invalid activeWorkspace");
+		return nullptr;
+	}
 
+	if (!allow_fullscreen && workspace->m_bHasFullscreenWindow) {
+		trace.trace("window is fullscreen");
+		return nullptr;
+	}
+
+	trace.trace("identified workspace_for_action: {}", workspace->m_iID);
 	return workspace;
 }
 
@@ -75,6 +88,8 @@ void dispatch_setephemeral(std::string value) {
 }
 
 std::optional<ShiftDirection> parseShiftArg(std::string arg) {
+	Hy3TraceContext trace("parseShiftArg", "arg: '{}'", arg);
+
 	if (arg == "l" || arg == "left") return ShiftDirection::Left;
 	else if (arg == "r" || arg == "right") return ShiftDirection::Right;
 	else if (arg == "u" || arg == "up") return ShiftDirection::Up;
@@ -83,6 +98,8 @@ std::optional<ShiftDirection> parseShiftArg(std::string arg) {
 }
 
 std::optional<BitFlag<Layer>> parseLayerArg(std::string arg) {
+	Hy3TraceContext trace("parseLayerArg", "arg: '{}'", arg);
+
 	if (arg == "same" || arg == "samelayer") return Layer::None;
 	else if (arg == "tiled") return Layer::Tiled;
 	else if (arg == "floating") return Layer::Floating;
@@ -116,8 +133,13 @@ void dispatch_movewindow(std::string value) {
 }
 
 void dispatch_movefocus(std::string value) {
+	Hy3TraceContext trace("dispatch_movefocus", "value: '{}'", value);
+
 	auto workspace = workspace_for_action();
-	if (!valid(workspace)) return;
+	if (!valid(workspace)) {
+		trace.trace("no workspace found");
+		return;
+	}
 
 	auto args = CVarList(value);
 	std::optional<BitFlag<Layer>> layerArg;
@@ -135,9 +157,16 @@ void dispatch_movefocus(std::string value) {
 			const static auto default_movefocus_layer =
 			    ConfigValue<Hyprlang::STRING>("plugin:hy3:default_movefocus_layer");
 			if ((layerArg = parseLayerArg(*default_movefocus_layer))) layers |= layerArg.value();
+
+			trace.trace("no layer args supplied, layers defaulted to: {:x} (configuration value: {})", layers.m_FlagValue, *default_movefocus_layer);
 		}
 
+		trace.trace("invoking shiftFocus with workspace: {}, shift: {}, visible: {}, layers: {}",
+			workspace->m_iID, (int)shift.value(), visible, layers.m_FlagValue);
+
 		g_Hy3Layout->shiftFocus(workspace, shift.value(), visible, layers);
+	} else {
+		trace.trace("parseShiftArg failed");
 	}
 }
 

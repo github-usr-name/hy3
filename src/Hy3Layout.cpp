@@ -1045,6 +1045,8 @@ bool covers(const CBox& outer, const CBox& inner) {
 }
 
 bool isObscured(CWindow* window) {
+	Hy3TraceContext trace("isObscured", "window: {}", window);
+
 	if (!window) return false;
 
 	const auto inner_box = window->getWindowMainSurfaceBox();
@@ -1066,6 +1068,7 @@ bool isObscured(CWindow* window) {
 		if (is_obscured) break;
 	};
 
+	trace.trace("return value: {}", is_obscured);
 	return is_obscured;
 }
 
@@ -1082,6 +1085,9 @@ CWindow* getWindowInDirection(
     BitFlag<Layer> layers_same_monitor,
     BitFlag<Layer> layers_other_monitors
 ) {
+	Hy3TraceContext trace("getWindowInDirection", "source: {}, direction: {}, layers_same_monitor: {}, layers_other_monitors: {}",
+		source, (int)direction, layers_same_monitor.m_FlagValue, layers_other_monitors.m_FlagValue);
+
 	if (!source) return nullptr;
 	if (layers_other_monitors == Layer::None && layers_same_monitor == Layer::None) return nullptr;
 
@@ -1106,14 +1112,24 @@ CWindow* getWindowInDirection(
 	                                             : next_monitor->activeWorkspace
 	                                         : nullptr;
 
+	trace.trace("source_middle: ({}, {}), focus_policy: {}, permit_obscured: {}, source_monitor: {}, next_monitor: {}, next_workspace: {}",
+		source_middle.x, source_middle.y, *focus_policy, permit_obscured_windows, source_monitor ? source_monitor->ID : -1,
+		next_monitor ? next_monitor->ID : -1, next_workspace ? next_workspace->m_iID : -1);
+
 	auto isCandidate = [=, mon = source->m_iMonitorID](CWindow* w) {
 		const auto window_layer = w->m_bIsFloating ? Layer::Floating : Layer::Tiled;
 		const auto monitor_flags = w->m_iMonitorID == mon ? layers_same_monitor : layers_other_monitors;
 
-		return (monitor_flags.Has(window_layer)) && w->m_bIsMapped && w->m_iX11Type != 2
+		Hy3TraceContext trace("isCandidate", "w: {}, window_layer: {}, monitor_flags: {}",
+			w, (int)window_layer, layers_other_monitors.m_FlagValue);
+
+		bool res = (monitor_flags.Has(window_layer)) && w->m_bIsMapped && w->m_iX11Type != 2
 		    && !w->m_sAdditionalConfigData.noFocus && !w->isHidden() && !w->m_bX11ShouldntFocus
 		    && (w->m_bPinned || w->m_pWorkspace == source->m_pWorkspace
 		        || w->m_pWorkspace == next_workspace);
+
+		trace.trace("{}", res);
+		return res;
 	};
 
 	for (auto& pw: g_pCompositor->m_vWindows) {
@@ -1124,6 +1140,7 @@ CWindow* getWindowInDirection(
 			                                 : dist.isInDirection(direction))
 			    && (permit_obscured_windows || isNotObscured(w)))
 			{
+				trace.trace("found closer window: {}, primary distance: {}, secondary distance: {}", w, dist.primary_axis, dist.secondary_axis);
 				target_window = w;
 				target_distance = dist;
 			}
@@ -1136,12 +1153,18 @@ CWindow* getWindowInDirection(
 	// as the last focused window on that monitor's workspace then choose the last focused window
 	// instead; this allows seamless back-and-forth by direction keys
 	if (target_window && target_window->m_iMonitorID != source->m_iMonitorID) {
+		trace.trace("target_window: {} on different monitor ({}) to source window ({})", target_window, target_window->m_iMonitorID, source->m_iMonitorID);
+
 		if (next_workspace) {
 			if (auto last_focused = next_workspace->getLastFocusedWindow()) {
 				auto target_bounds =
 				    CBox(target_window->m_vRealPosition.value(), target_window->m_vRealSize.value());
 				auto last_focused_bounds =
 				    CBox(last_focused->m_vRealPosition.value(), last_focused->m_vRealSize.value());
+
+				trace.trace("last_focused: {}, target_bounds: ({}, {} x {}, {}), last_focused_bounds: ({}, {} x {}, {})",
+					last_focused, target_bounds.x, target_bounds.y, target_bounds.w, target_bounds.h,
+					last_focused_bounds.x, last_focused_bounds.y, last_focused_bounds.w, last_focused_bounds.h);
 
 				if ((direction == ShiftDirection::Left
 				     && STICKS(
@@ -1159,16 +1182,25 @@ CWindow* getWindowInDirection(
 				    ))
 				{
 					target_window = last_focused;
+					trace.trace("the last focused window: {} on the next monitor is next to the source, choosing it", last_focused);
 				}
+			} else {
+				trace.trace("last_focused not assigned");
 			}
+		} else {
+			trace.trace("next_workspace not assigned");
 		}
 	}
 
+	trace.trace("return value: {}", target_window);
 	return target_window;
 }
 
 void Hy3Layout::shiftFocusToMonitor(ShiftDirection direction) {
+	Hy3TraceContext trace("shiftFocusToMonitor", "direction: {}", (int)direction);
+
 	auto target_monitor = g_pCompositor->getMonitorInDirection(directionToChar(direction));
+	trace.trace("target_monitor: {}", target_monitor ? target_monitor->ID : -1);
 	if (target_monitor) this->focusMonitor(target_monitor);
 }
 
@@ -1178,11 +1210,19 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& source_workspace, ShiftDirection 
 	Hy3Node    *source_node      = nullptr;
 	CWindow    *source_window    = g_pCompositor->m_pLastWindow;
 
+	Hy3TraceContext trace("Hy3Layout::shiftFocus", "source_workspace: {}, direction: {}, visible: {}, layers: {}",
+		source_workspace ? source_workspace.get()->m_iID : -1, (int)direction, visible, eligible_layers.m_FlagValue
+	);
+
 	if (source_workspace) {
 		source_window = source_workspace->m_pLastFocusedWindow;
 	} else {
 		source_window = g_pCompositor->m_pLastWindow;
 	}
+
+	trace.trace("source_window: {}, source_workspace: {}, full screen window: {}",
+		source_window, source_workspace ? source_workspace.get()->m_iID : -1,
+		source_workspace ? source_workspace.get()->m_bHasFullscreenWindow : false );
 
 	if (source_window == nullptr || (source_workspace && source_workspace->m_bHasFullscreenWindow)) {
 		shiftFocusToMonitor(direction);
@@ -1200,13 +1240,18 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& source_workspace, ShiftDirection 
 	);
 
 	// If no eligible_layers specified then choose the same layer as the source window
-	if (eligible_layers == Layer::None)
+	if (eligible_layers == Layer::None) {
 		eligible_layers = source_window->m_bIsFloating ? Layer::Floating : Layer::Tiled;
+		trace.trace("eligible_layers defaulted to: {}", eligible_layers.m_FlagValue);
+	}
 
 	const auto static focus_policy =
 	    ConfigValue<Hyprlang::INT>("plugin:hy3:focus_obscured_windows_policy");
 	bool skip_obscured = *focus_policy == 1
 	                  || (*focus_policy == 2 && eligible_layers.Has(Layer::Floating | Layer::Tiled));
+
+	trace.trace("eligible_layers: {}, focus_policy: {}, skip_obscured: {}",
+		eligible_layers.m_FlagValue, *focus_policy, skip_obscured);
 
 	// Determine the starting point for looking for a tiled node - it's either the
 	// workspace's focused node or the floating window's focus entry point (which may be null)
@@ -1215,11 +1260,17 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& source_workspace, ShiftDirection 
 		                                           : getWorkspaceFocusedNode(source_workspace);
 
 		if (source_node) {
+			trace.trace("source_node: {}", source_node->debugNode());
 			candidate_node = this->shiftOrGetFocus(*source_node, direction, false, false, visible);
 			while (candidate_node && skip_obscured && isObscured(candidate_node)) {
 				candidate_node = this->shiftOrGetFocus(*candidate_node, direction, false, false, visible);
 			}
+			trace.trace("candidate_node: {}", candidate_node ? candidate_node->debugNode() : "(null)");
+		} else {
+			trace.trace("no source node found");
 		}
+	} else {
+		trace.trace("tiled windows not eligible for selection");
 	}
 
 	BitFlag<Layer> this_monitor = eligible_layers & Layer::Floating;
@@ -1237,6 +1288,7 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& source_workspace, ShiftDirection 
 	// candidate.
 	bool focus_closest_window = false;
 	if (closest_window) {
+		trace.trace("closest_window: {}", closest_window);
 		if (candidate_node) {
 			// If the closest window is tiled then focus the tiled node which was obtained from
 			// `shiftOrGetFocus`, otherwise focus whichever is closer
@@ -1249,18 +1301,25 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& source_workspace, ShiftDirection 
 				Distance distanceToTiledNode(direction, source_window->middle(), candidate_node->middle());
 
 				if (distanceToClosestWindow < distanceToTiledNode) {
+					trace.trace("closest_window is floating and is closer (primary: {}, secondary: {}) than tiled node (primary: {}, secondary: {})",
+						distanceToClosestWindow.primary_axis, distanceToClosestWindow.secondary_axis,
+						distanceToTiledNode.primary_axis, distanceToTiledNode.secondary_axis);
+
 					focus_closest_window = true;
 				}
 			}
 		} else {
 			focus_closest_window = true;
 		}
+	} else {
+		trace.trace("closest_window not assigned");
 	}
 
 	std::optional<uint64_t> new_monitor_id;
 	if (focus_closest_window) {
 		new_monitor_id = closest_window->m_iMonitorID;
 		setFocusOverride(closest_window, direction, source_node);
+		trace.trace("calling g_pCompositor->focusWindow for window: {}", closest_window);
 		g_pCompositor->focusWindow(closest_window);
 	} else if (candidate_node) {
 		if (candidate_node->data.type == Hy3NodeType::Window) {
@@ -1268,30 +1327,40 @@ void Hy3Layout::shiftFocus(const PHLWORKSPACE& source_workspace, ShiftDirection 
 		} else if (auto workspace = candidate_node->getRoot()->workspace) {
 			new_monitor_id = workspace->m_iMonitorID;
 		}
+		trace.trace("calling focusWindow on candidate_node: {}", candidate_node->debugNode());
 		candidate_node->focusWindow();
 		candidate_node->getRoot()->recalcSizePosRecursive();
 	} else {
+		trace.trace("no window or node found, falling back to `shiftFocusToMonitor`");
 		shiftFocusToMonitor(direction);
 	}
 
 	if (new_monitor_id && new_monitor_id.value() != source_window->m_iMonitorID) {
+		trace.trace("new_monitor_id: {} different from source monitor: {}", new_monitor_id.value(), source_window->m_iMonitorID);
 		if (auto* monitor = g_pCompositor->getMonitorFromID(new_monitor_id.value())) {
+			trace.trace("calling g_pCompositor->setActiveMonitor");
 			g_pCompositor->setActiveMonitor(monitor);
 		}
 	}
 }
 
 Hy3Node* Hy3Layout::getFocusOverride(CWindow* src, ShiftDirection direction) {
+	Hy3TraceContext trace("Hy3Layout::getFocusOverride", "src: {}, direction: {}", src, (int) direction);
+
 	if (auto intercept = this->m_focusIntercepts.find(src);
 	    intercept != this->m_focusIntercepts.end())
 	{
+		trace.trace("source window has stored overrides");
 		Hy3Node** accessor = intercept->second.forDirection(direction);
 
 		if (auto override = *accessor) {
 			// If the root isn't valid or is on a different workspsace then update the intercept data
 			if (override->workspace != src->m_pWorkspace
+				|| !valid(override->workspace)
 			    || !std::ranges::contains(this->nodes, *override))
 			{
+				trace.trace("override found but not valid");
+				override = nullptr;
 				*accessor = nullptr;
 				// If there are no remaining overrides then discard the intercept
 				if (intercept->second.isEmpty()) {
@@ -1299,14 +1368,18 @@ Hy3Node* Hy3Layout::getFocusOverride(CWindow* src, ShiftDirection direction) {
 				}
 			}
 
+			trace.trace("found override: {}", override ? override->debugNode() : "(null)" );
 			return override;
 		}
 	}
 
+	trace.trace("no override found");
 	return nullptr;
 }
 
 void Hy3Layout::setFocusOverride(CWindow* src, ShiftDirection direction, Hy3Node* dest) {
+	Hy3TraceContext trace("Hy3Layout::setFocusOverride", "src: {}, direction: {}, dest: {}", src, (int)direction, dest->debugNode());
+
 	if (auto intercept = this->m_focusIntercepts.find(src);
 	    intercept != this->m_focusIntercepts.end())
 	{
@@ -1978,8 +2051,12 @@ Hy3Node* Hy3Layout::shiftOrGetFocus(
     bool once,
     bool visible
 ) {
+	Hy3TraceContext trace("Hy3Layout::shiftOrGetFocus", "node: {}, direction: {}, shift: {}, once: {}, visible: {}",
+		node.debugNode(), (int)direction, shift, once, visible);
+
 	auto* break_origin = &node.getExpandActor();
 	auto* break_parent = break_origin->parent;
+	trace.trace("break_origin: {}, break_parent: {}", break_origin->debugNode(), break_parent->debugNode());
 
 	auto has_broken_once = false;
 
