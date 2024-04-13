@@ -1378,7 +1378,7 @@ Hy3Node* Hy3Layout::getFocusOverride(CWindow* src, ShiftDirection direction) {
 }
 
 void Hy3Layout::setFocusOverride(CWindow* src, ShiftDirection direction, Hy3Node* dest) {
-	Hy3TraceContext trace("Hy3Layout::setFocusOverride", "src: {}, direction: {}, dest: {}", src, (int)direction, dest->debugNode());
+	Hy3TraceContext trace("Hy3Layout::setFocusOverride", "src: {}, direction: {}, dest: {}", src, (int)direction, dest ? dest->debugNode() : "(null)");
 
 	if (auto intercept = this->m_focusIntercepts.find(src);
 	    intercept != this->m_focusIntercepts.end())
@@ -2056,7 +2056,9 @@ Hy3Node* Hy3Layout::shiftOrGetFocus(
 
 	auto* break_origin = &node.getExpandActor();
 	auto* break_parent = break_origin->parent;
-	trace.trace("break_origin: {}, break_parent: {}", break_origin->debugNode(), break_parent->debugNode());
+	trace.trace("break_origin: {}, break_parent: {}",
+		break_origin ? break_origin->debugNode() : "(null)",
+		break_parent ? break_parent->debugNode() : "(null)");
 
 	auto has_broken_once = false;
 
